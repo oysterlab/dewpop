@@ -126,10 +126,20 @@ function step(dt) {
         v.x = (v.x + f[k].x * h) * .9985; v.y = (v.y + f[k].y * h) * .9985;
         p.x += v.x * h; p.y += v.y * h;
         // tank walls and floor (soft, a little friction)
-        if (p.y > tank.b) { p.y = tank.b; v.y *= -.15; v.x *= .9; }
+        if (p.y > tank.b) { p.y = tank.b; if (v.y > 0) v.y = 0; v.x *= .85; }
         if (p.x < tank.l) { p.x = tank.l; v.x *= -.2; }
         if (p.x > tank.r) { p.x = tank.r; v.x *= -.2; }
       }
+      // internal damping: the whole ball may wobble like pudding, but the points' motion *relative to
+      // the ball* dies out fast — that relative buzz is what reads as trembling at rest
+      let mx = 0, my = 0; for (const v of b.v) { mx += v.x; my += v.y; } mx /= N; my /= N;
+      if (my > 500) { const d = 500 - my; for (const v of b.v) v.y += d; my = 500; } // terminal speed: soft landings, no splat
+      let rel = 0; for (const v of b.v) rel += Math.abs(v.x - mx) + Math.abs(v.y - my); rel /= N;
+      // a real knock (landing, a ball dropping on it, a merge) restarts a short pudding wobble;
+      // after ~0.5 s the damping ramps up until the ball is perfectly still
+      if (rel > 90) b.calm = 0; else b.calm = (b.calm || 0) + h;
+      const keep = Math.exp(-(9 + 34 * Math.min(1, Math.max(0, b.calm - .35) / .5)) * h);
+      for (const v of b.v) { v.x = mx + (v.x - mx) * keep; v.y = my + (v.y - my) * keep; }
       // the inner ball of style B lags behind the shell (sloshes)
       const ib = b.inner; ib.vx += (c.x - ib.x) * 60 * h - ib.vx * 6 * h; ib.vy += (c.y - ib.y) * 60 * h - ib.vy * 6 * h; ib.x += ib.vx * h; ib.y += ib.vy * h;
     }
@@ -157,9 +167,9 @@ function collide(P, Q) {
       const t = Math.max(0, Math.min(1, ((p.x - a.x) * ex + (p.y - a.y) * ey) / L2)), qx = a.x + ex * t, qy = a.y + ey * t, d = (p.x - qx) ** 2 + (p.y - qy) ** 2;
       if (d < best) { best = d; bi = e; bt = t; bx = qx; by = qy; } }
     const dx = bx - p.x, dy = by - p.y;
-    p.x += dx * .5; p.y += dy * .5;
+    p.x += dx * .4; p.y += dy * .4;
     const a = Q.p[bi], b = Q.p[(bi + 1) % N];
-    a.x -= dx * .5 * (1 - bt); a.y -= dy * .5 * (1 - bt); b.x -= dx * .5 * bt; b.y -= dy * .5 * bt;
+    a.x -= dx * .4 * (1 - bt); a.y -= dy * .4 * (1 - bt); b.x -= dx * .4 * bt; b.y -= dy * .4 * bt;
     // kill the approaching velocity so stacks settle instead of jittering
     const L = Math.hypot(dx, dy) || 1, nx = dx / L, ny = dy / L, vp = P.v[k], va = Q.v[bi], vb = Q.v[(bi + 1) % N];
     const rel = (vp.x - (va.x + vb.x) / 2) * nx + (vp.y - (va.y + vb.y) / 2) * ny;
@@ -350,7 +360,7 @@ function dropAt(x, c = (Math.random() * COLORS.length) | 0) {
   for (const v of b.v) v.y = 120;
   b.wob = (Math.random() - .5) * .5;
 }
-let last = performance.now(), auto = 0, landed = new Set();
+let last = performance.now(), auto = 0, landed = new Set(), autoOn = true;
 function frame(now) {
   const dt = Math.min(1 / 30, (now - last) / 1000); last = now;
   step(dt);
@@ -359,7 +369,7 @@ function frame(now) {
     if (!landed.has(b.id) && c.y > tank.t + 20 && Math.abs(vy) < 40) { landed.add(b.id); sfx.land(500); buzz(12); }
     if (b.crack) { b.crack += dt * 2.2; if (b.crack > 1.25) shatter(b); }
   }
-  auto += dt; if (auto > 1.3 && balls.length < 11) { auto = 0; dropAt(tank.l + 30 + Math.random() * (tank.r - tank.l - 60)); }
+  auto += dt; if (autoOn && auto > 1.3 && balls.length < 11) { auto = 0; dropAt(tank.l + 30 + Math.random() * (tank.r - tank.l - 60)); }
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, Wpx, Hpx);
   drawTank();
   const t = now / 1000;
@@ -376,7 +386,9 @@ function setStyle(s) { style = s; [...seg.children].forEach((b, k) => b.classLis
 seg.onclick = e => { const b = e.target.closest('button'); if (b) setStyle(+b.dataset.s); };
 let saved = 0; try { saved = +(localStorage.getItem('wax-style') || 0); } catch {}
 setStyle(saved);
-window.__wax = { balls, setStyle, dropAt, startPop };
+window.__wax = { balls, setStyle, dropAt, startPop, set auto(v) { autoOn = v; },
+  // jitter probe: mean point speed relative to its own ball (internal shaking), px/s
+  jitter() { let s = 0, n = 0; for (const b of balls) { let mx = 0, my = 0; for (const v of b.v) { mx += v.x; my += v.y; } mx /= N; my /= N; for (const v of b.v) { s += Math.hypot(v.x - mx, v.y - my); n++; } } return n ? s / n : 0; } };
 </script>
 </body>
 </html>
