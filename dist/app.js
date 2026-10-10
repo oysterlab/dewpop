@@ -414,9 +414,10 @@ const ghostCv = document.createElement('canvas'), ghost = ghostCv.getContext('2d
 function drawPredLine(c, line, now) {
   const hex = E.COLORS[line.color].hex, pulse = .6 + .4 * Math.sin(now / 110);
   c.save(); c.lineCap = 'round';
-  c.globalAlpha = .9 * pulse; c.strokeStyle = '#fff'; c.lineWidth = .5; c.setLineDash([.7, .45]);
-  c.beginPath(); c.moveTo(E.WALL, line.y); c.lineTo(W - E.WALL, line.y); c.stroke();
-  c.strokeStyle = hex; c.lineWidth = .28; c.stroke(); c.setLineDash([]);
+  // the line that will pop: a soft glowing band in its colour (no dashes)
+  const g = c.createLinearGradient(0, line.y - .9, 0, line.y + .9);
+  g.addColorStop(0, 'rgba(255,255,255,0)'); g.addColorStop(.5, hex); g.addColorStop(1, 'rgba(255,255,255,0)');
+  c.globalAlpha = .35 + .3 * pulse; c.fillStyle = g; c.fillRect(E.WALL, line.y - .9, W - 2 * E.WALL, 1.8);
   c.globalAlpha = 1; c.font = '700 1.1px Fredoka, sans-serif'; c.textAlign = 'right'; c.textBaseline = 'bottom';
   c.lineWidth = .25; c.strokeStyle = 'rgba(0,40,40,.8)'; c.strokeText('POP', W - .8, line.y - .5); c.fillStyle = '#fff'; c.fillText('POP', W - .8, line.y - .5);
   c.restore();
@@ -602,11 +603,7 @@ function onEvents(events) {
     if (ev.type === 'lock') {
       // show the join: a light runs from the joining point to both walls, the body charges up
       const dur = ev.steps / E.TPS;
-      // a jagged crack along the line (fixed per lock) plus a few short branches
-      const crk = [], br = [];
-      for (let x = E.WALL, y = 0; x <= W - E.WALL + .01; x += .25 + Math.random() * .7) { y = Math.max(-.5, Math.min(.5, y + (Math.random() - .5) * .55)); crk.push([x, y]); }
-      for (let k = 0; k < 9; k++) br.push({ x: E.WALL + Math.random() * (W - 2 * E.WALL), a: (Math.random() < .5 ? -1 : 1) * (.5 + Math.random() * .9), l: .5 + Math.random() * 1.3 });
-      locks.push({ ...ev, t0: performance.now(), dur: dur * 1000, crk, br });
+      locks.push({ ...ev, t0: performance.now(), dur: dur * 1000 });
       const [sx, sy] = [ev.x * unit, (ev.y - VIEW_TOP) * unit];
       popup(pickOne(HYPE.lock), sx, Math.max(30, sy - unit * 2.2), 'link');
       sfx.lock(world.chain, dur); buzz(HAPTIC.lock);
@@ -923,17 +920,12 @@ function drawDeco(time, held) {
     const u = Math.min(1, 1 - live.t / L.steps);
     const run = Math.min(1, u / .4), e = 1 - Math.pow(1 - run, 3);
     const x0 = L.x - (L.x - E.WALL) * e, x1 = L.x + (W - E.WALL - L.x) * e, hex = E.COLORS[L.color].hex;
-    // the wax skin cracks from the join point out to both walls, then the walls flash
     const pulse = .6 + .4 * Math.sin(u * 30);
     c.save(); c.lineCap = 'round'; c.lineJoin = 'round';
-    const pts = L.crk.filter(([x]) => x >= x0 - .3 && x <= x1 + .3);
-    const path = () => { c.beginPath(); pts.forEach(([x, dy], j) => j ? c.lineTo(x, L.y + dy) : c.moveTo(x, L.y + dy)); };
-    c.globalAlpha = .35 + .15 * pulse; c.strokeStyle = hex; c.lineWidth = .45; c.shadowColor = hex; c.shadowBlur = .8; path(); c.stroke();
-    c.shadowBlur = 0; c.globalAlpha = .9; c.strokeStyle = 'rgba(40,30,40,.55)'; c.lineWidth = .2; path(); c.stroke();
-    c.globalAlpha = 1; c.strokeStyle = '#fff'; c.lineWidth = .11; c.translate(-.06, -.07); path(); c.stroke(); c.translate(.06, .07);
-    // branches appear once the crack has passed them
-    c.strokeStyle = '#fff'; c.lineWidth = .09; c.globalAlpha = .85;
-    for (const b of L.br) if (b.x >= x0 && b.x <= x1) { const l = b.l * Math.min(1, u * 2.2); c.beginPath(); c.moveTo(b.x, L.y); c.lineTo(b.x + Math.cos(b.a) * l * .5, L.y + Math.sin(b.a) * l); c.stroke(); }
+    // a soft band of light runs from the join point out to both walls (no hard lines)
+    const g0 = c.createLinearGradient(0, L.y - 1.1, 0, L.y + 1.1);
+    g0.addColorStop(0, 'rgba(255,255,255,0)'); g0.addColorStop(.5, `rgba(255,255,255,${.28 + .14 * pulse})`); g0.addColorStop(1, 'rgba(255,255,255,0)');
+    c.globalCompositeOperation = 'lighter'; c.fillStyle = g0; c.fillRect(x0, L.y - 1.1, x1 - x0, 2.2); c.globalCompositeOperation = 'source-over';
     // ring at the joining point
     const rr = .5 + u * 4; c.globalAlpha = Math.max(0, .9 - u); c.lineWidth = .25; c.strokeStyle = '#fff';
     c.beginPath(); c.arc(L.x, L.jy, rr, 0, 6.283); c.stroke();
