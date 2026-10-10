@@ -20,8 +20,8 @@ export const WALL = 0.25;
 export const MAXP = 5000;
 export const MUD = 6;
 export const TILT_STEPS = 90, TILT_MAX = 3, TILT_METER = 700;
-export const DROP_N = 52;                      // cells per droplet
-export const CELL = 4.25;                      // droplet spacing inside a set (units)
+export let DROP_N = 30;                      // cells per droplet
+export const CELL = 3.3;                      // droplet spacing inside a set (units)
 export const LOCK_STEPS = 72;
 export const SPAN_EDGE = 0.45;
 export const ENGINE = 'grid';
@@ -36,11 +36,11 @@ export const COLORS = [null,
 
 export const PHYS = {
   gAcc: 0.12, vMax: 3, budget: 3, mudBudget: 1, diagFree: 0, squeeze: 3, squeezeDepth: 5, tiltCells: 8,
-  cascadeBudget: 6, cascadeTicks: 180, lerp: 0.35, springK: 0.1, springD: 0.2, glide: 0.09, rescueFill: 0.8,
+  cascadeBudget: 6, cascadeTicks: 180, lerp: 0.35, springK: 0.1, springD: 0.2, glide: 0.09, surfBias: 0.45, rescueFill: 0.8,
   // fields the app reads (kept for compatibility)
   gel: 0, gelStart: 1, gelEnd: 2, tiltMode: 'nudge', nudgeSteps: TILT_STEPS, sloshSteps: TILT_STEPS, hover: 0,
 };
-export function tune(p) { for (const k in p) if (k in PHYS && !['gel', 'gelStart', 'gelEnd', 'tiltMode', 'nudgeSteps', 'sloshSteps'].includes(k)) PHYS[k] = p[k]; }
+export function tune(p) { if (p.dropN) DROP_N = p.dropN; for (const k in p) if (k in PHYS && !['gel', 'gelStart', 'gelEnd', 'tiltMode', 'nudgeSteps', 'sloshSteps'].includes(k)) PHYS[k] = p[k]; }
 
 export const SHAPES = [
   { c: [[0, 0]], w: 2 },
@@ -83,12 +83,12 @@ function worldRand(w) {
 export function rng(seed) { let s = seed >>> 0 || 1; return () => { s ^= s << 13; s >>>= 0; s ^= s >> 17; s ^= s << 5; s >>>= 0; return s / 4294967296; }; }
 
 // --- rules ---------------------------------------------------------------------
-export const ENDLESS = { c3: 0, c4: 40, c5: 90, mud: [[25, 7], [60, 5], [100, 4]], big: [[0, .8], [30, 1], [70, 1.3]], mix: [[0, .25], [20, .35], [50, .45], [90, .55]] };
+export const ENDLESS = { c3: 0, c4: 0, c5: 70, mud: [[25, 7], [60, 5], [100, 4]], big: [[0, .8], [30, 1], [70, 1.3]], mix: [[0, .25], [20, .35], [50, .45], [90, .55]] };
 const stepAt = (tbl, p) => { let v = 0; for (const [from, val] of tbl) if (p >= from) v = val; return v; };
 // 90-second score attack: combos buy back time
 export function blitzRules() {
   const r = endlessRules();
-  return { ...r, kind: 'blitz', timeLimit: 90 * TPS, colorsAt: p => p < 30 ? 3 : 4, mudEvery: p => p < 20 ? 0 : 8 };
+  return { ...r, kind: 'blitz', timeLimit: 90 * TPS, colorsAt: () => 4, mudEvery: p => p < 20 ? 0 : 8 };
 }
 export const timeLeft = w => w.rules.timeLimit ? Math.max(0, (w.rules.timeLimit + w.timeBonus - w.steps) / TPS) : Infinity;
 export function endlessRules() {
@@ -194,7 +194,7 @@ export function randomPiece(w) {
     return makePiece(cells, c, c);
   }
   const mix = w.rules.mixAt ? w.rules.mixAt(w.placed) : 0;
-  const pick = () => (surf.length && w.rand() < .45) ? surf[(w.rand() * Math.min(2, surf.length)) | 0] : pal[(w.rand() * pal.length) | 0];
+  const pick = () => (surf.length && w.rand() < PHYS.surfBias) ? surf[(w.rand() * Math.min(2, surf.length)) | 0] : pal[(w.rand() * pal.length) | 0];
   const cells = pickShape(w), a = pick();
   let b = a;
   if (cells.length > 1 && pal.length > 1 && w.rand() < mix) { do b = pal[(w.rand() * pal.length) | 0]; while (b === a); }
