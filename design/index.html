@@ -16,7 +16,7 @@
     font-family: "Jua", system-ui, sans-serif; color: var(--ink); overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none;
     background: #06302f;
   }
-  body::before { content: ""; position: fixed; inset: -40px; z-index: -1; background: #06302f url(../assets/bg.jpg) center / cover; filter: blur(16px) brightness(.85); }
+  body::before { content: ""; position: fixed; inset: -40px; z-index: -1; background: #06302f url(../assets/bg.jpg) center / cover; filter: blur(16px) brightness(1.05) saturate(.8); }
   #app { height: 100%; max-width: 480px; margin: 0 auto; display: flex; flex-direction: column; gap: 10px;
     padding: max(10px, env(safe-area-inset-top)) 12px max(12px, env(safe-area-inset-bottom)); }
   h1 { margin: 0; font-size: 20px; font-weight: 400; text-align: center; letter-spacing: .5px; }
@@ -56,11 +56,11 @@ const STYLES = [
   { name: 'B 투명 말랑이', desc: '투명한 말랑이 안에 왁스 볼이 들어 있는 타입. 속 볼이 출렁이며 따라 움직여요.' },
   { name: 'C 왁스 볼', desc: '겉이 그대로 왁스인 볼. 파스텔 마블 무늬와 굳은 왁스 방울, 은은한 왁스 광.' },
 ];
-const COLORS = [
-  { base: '#ff7fa8', light: '#ffd0df', dark: '#d9487a', tie: '#ffe14d' },  // strawberry
-  { base: '#4fdcb4', light: '#c8fff0', dark: '#1fa883', tie: '#ff6f91' },  // mint
-  { base: '#ffcf4a', light: '#fff2b8', dark: '#e09a12', tie: '#59b8ff' },  // lemon
-  { base: '#a98bff', light: '#e6dcff', dark: '#7155e0', tie: '#7dffb1' },  // grape
+const COLORS = [  // clear candy colours: bright core, saturated body, edge only slightly deeper (never muddy)
+  { base: '#ff4f8f', light: '#ffc2d8', dark: '#f0306f', glow: '#ff8fb8', tie: '#ffe14d' },  // strawberry
+  { base: '#14e0a8', light: '#b8fff0', dark: '#00c08c', glow: '#7dffd9', tie: '#ff5c8a' },  // mint
+  { base: '#ffcc1a', light: '#fff4b0', dark: '#ffa800', glow: '#ffe680', tie: '#3fa9ff' },  // lemon
+  { base: '#9a6bff', light: '#e2d4ff', dark: '#7a45ff', glow: '#c4a8ff', tie: '#5dffa8' },  // grape
 ];
 let style = 0;
 const cv = document.getElementById('cv'), ctx = cv.getContext('2d'), stage = document.getElementById('stage');
@@ -228,21 +228,26 @@ function ringPath(b, scale = 1, c = centroid(b)) {
 }
 const rnd = s => { const x = Math.sin(s) * 43758.5453; return x - Math.floor(x); };
 function shade(b, c, r, col, scale = 1) { // glossy clay/wax body fill with a light from the upper-left
-  const g = ctx.createRadialGradient(c.x - r * .35, c.y - r * .45, r * .1, c.x, c.y, r * 1.05);
-  g.addColorStop(0, col.light); g.addColorStop(.45, col.base); g.addColorStop(1, col.dark);
+  const g = ctx.createRadialGradient(c.x - r * .35, c.y - r * .45, r * .05, c.x, c.y, r * 1.05);
+  g.addColorStop(0, col.light); g.addColorStop(.35, col.base); g.addColorStop(.85, col.base); g.addColorStop(1, col.dark);
   ringPath(b, scale, c); ctx.fillStyle = g; ctx.fill();
+  // light passing through the far (lower-right) side — candy glow instead of a dark edge
+  ctx.save(); ringPath(b, scale, c); ctx.clip();
+  const g2 = ctx.createRadialGradient(c.x + r * .45, c.y + r * .5, 0, c.x + r * .45, c.y + r * .5, r * .75);
+  g2.addColorStop(0, col.glow); g2.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.globalAlpha = .55; ctx.fillStyle = g2; ctx.fillRect(c.x - r * 1.2, c.y - r * 1.2, r * 2.4, r * 2.4); ctx.restore();
 }
 function waxGloss(b, c, r, scale, strong = 1) {
   ctx.save(); ringPath(b, scale, c); ctx.clip();
   // candle-wax sheen: a broad soft band + a crisp highlight + tiny bumps of uneven coating
   const g = ctx.createLinearGradient(c.x - r, c.y - r, c.x + r * .3, c.y + r * .2);
-  g.addColorStop(0, `rgba(255,255,255,${.45 * strong})`); g.addColorStop(.5, 'rgba(255,255,255,.06)'); g.addColorStop(1, 'rgba(255,255,255,0)');
+  g.addColorStop(0, `rgba(255,255,255,${.3 * strong})`); g.addColorStop(.45, 'rgba(255,255,255,0)'); g.addColorStop(1, 'rgba(255,255,255,0)');
   ctx.fillStyle = g; ctx.fillRect(c.x - r * 1.2, c.y - r * 1.2, r * 2.4, r * 2.4);
   ctx.fillStyle = `rgba(255,255,255,${.85 * strong})`;
   ctx.beginPath(); ctx.ellipse(c.x - r * .38, c.y - r * .45, r * .22, r * .11, -.7, 0, 6.283); ctx.fill();
   ctx.beginPath(); ctx.arc(c.x - r * .08, c.y - r * .62, r * .05, 0, 6.283); ctx.fill();
   for (let k = 0; k < 7; k++) { const a = rnd(b.seed + k) * 6.28, d = rnd(b.seed + k * 3.1) * r * .8;
-    ctx.fillStyle = 'rgba(255,255,255,.18)'; ctx.beginPath(); ctx.arc(c.x + Math.cos(a) * d, c.y + Math.sin(a) * d, r * (.05 + rnd(b.seed + k * 7) * .06), 0, 6.283); ctx.fill(); }
+    ctx.fillStyle = 'rgba(255,255,255,.12)'; ctx.beginPath(); ctx.arc(c.x + Math.cos(a) * d, c.y + Math.sin(a) * d, r * (.05 + rnd(b.seed + k * 7) * .06), 0, 6.283); ctx.fill(); }
   ctx.restore();
 }
 function cracks(b, c, r, scale) {
@@ -279,11 +284,11 @@ function knot(b, c, col) {
 function drawBall(b, t) {
   const c = centroid(b), r = b.R, col = COLORS[b.c];
   // soft contact shadow
-  ctx.fillStyle = 'rgba(0,30,30,.18)'; ctx.beginPath(); ctx.ellipse(c.x + 3, c.y + r * .2 + 4, r * .95, r * .8, 0, 0, 6.283); ctx.fill();
+  ctx.fillStyle = 'rgba(0,40,40,.1)'; ctx.beginPath(); ctx.ellipse(c.x + 3, c.y + r * .2 + 4, r * .95, r * .8, 0, 0, 6.283); ctx.fill();
   if (style === 0) {
     shade(b, c, r, col, .9); waxGloss(b, c, r, .9); cracks(b, c, r, .9);
     // clear rubber skin around it
-    ringPath(b, 1, c); ctx.fillStyle = 'rgba(255,255,255,.1)'; ctx.fill();
+    ringPath(b, 1, c); ctx.fillStyle = 'rgba(255,255,255,.04)'; ctx.fill();
     ctx.strokeStyle = 'rgba(255,255,255,.7)'; ctx.lineWidth = 1.6; ctx.stroke();
     ctx.save(); ringPath(b, 1, c); ctx.clip();
     ctx.strokeStyle = 'rgba(255,255,255,.85)'; ctx.lineWidth = r * .09; ctx.lineCap = 'round';
@@ -318,7 +323,7 @@ function drawBall(b, t) {
     for (let k = 0; k < 4; k++) { const i = (k * 5 + 1) % N, q = b.p[i]; if (q.y > c.y - r * .2) continue;
       ctx.fillStyle = col.light; ctx.beginPath(); ctx.ellipse(q.x, q.y + 3, 3.2, 5 + rnd(b.seed + k) * 4, 0, 0, 6.283); ctx.fill();
       ctx.fillStyle = 'rgba(255,255,255,.7)'; ctx.beginPath(); ctx.arc(q.x - 1, q.y + 1.5, 1.1, 0, 6.283); ctx.fill(); }
-    ringPath(b, 1, c); ctx.strokeStyle = 'rgba(0,0,0,.12)'; ctx.lineWidth = 1; ctx.stroke();
+    ringPath(b, 1, c); ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.lineWidth = 1; ctx.stroke();
   }
 }
 function drawTank() {
