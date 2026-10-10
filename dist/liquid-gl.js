@@ -123,19 +123,30 @@ void main(){
   float dl = smoothstep(T, T + u_D, hl), dr = smoothstep(T, T + u_D, hr), dd = smoothstep(T, T + u_D, hd), du = smoothstep(T, T + u_D, hu);
   vec3 pn = normalize(vec3(-vec2(dr - dl, du - dd) * u_N * 2.2, .5));
   float pdiff = clamp(dot(pn, L), 0., 1.);
-  vec3 col = base * (.8 + .32 * pdiff);
-  col = mix(col, base * vec3(.78, .78, .84), smoothstep(.2, .9, -pn.y) * edge * .28);       // shaded underside
+  // ── wax-coated slime ball (왁뿌볼): clear sticky slime inside a thin milky wax skin ──
+  float thick = dome;                                                    // 0 at the outline → 1 deep inside
+  // clear slime: colour builds up with thickness, thin parts let the scene show through
+  float alpha = mud ? .95 : .56 + .32 * thick;
+  vec3 col = min(base * (.95 + .32 * pdiff), vec3(1.));
+  col = mix(col, base * vec3(.7, .72, .82), smoothstep(.2, .9, -pn.y) * edge * .35);      // shaded underside
+  // light glowing through the slime just inside the lower-right rim
   float through = smoothstep(.05, .7, -pn.y * .6 + pn.x * .55) * smoothstep(.0, .35, dome) * (1. - smoothstep(.35, .9, dome));
-  col = mix(col, mix(base, vec3(1.), .42), through * .5);                                      // light through the jelly
+  col = mix(col, mix(base, vec3(1.), .45), through * .4);
+  // wax skin: a thin, slightly frosted film hugging the outline (more opaque, milky)
+  float skin = 1. - smoothstep(.0, .32, dome);
+  col = mix(col, mix(base, vec3(1.), .5), skin * .38);
+  alpha = mix(alpha, .95, skin * .8);
+  // the wax film catches light along its upper-left edge
+  col += vec3(1.) * skin * smoothstep(.2, .9, dot(pn.xy, vec2(-.6, .8))) * (mud ? .05 : .28);
+  // slow currents drifting inside the slime
+  col = mix(col, mix(base, vec3(1.), .3), (fl * .5 + .5) * .12 * inner);
+  // sheen: a soft waxy bloom plus a few crisp wet glints
   vec3 Hs = normalize(vec3(-.5, .62, .62));
-  float sp = pow(max(dot(pn, Hs), 0.), 46.);
-  // break the glint into separate spots (wet jelly), not one continuous plastic tube highlight
   vec2 P2 = vec2(uv.x, uv.y * u_tx.x / u_tx.y) * 24.;
   float spots = sin(P2.x * 1.3 + u_time * .25) * sin(P2.y * 1.1 - P2.x * .4 + u_time * .2);
-  sp *= smoothstep(.15, .7, spots);
-  col += sp * (mud ? .2 : 1.1);                                                                 // glossy highlight
-  col += pow(max(dot(pn, Hs), 0.), 6.) * (mud ? .02 : .07);                                    // soft sheen around it
-  col = mix(col, mix(base, vec3(1.), .3), (fl * .5 + .5) * .14 * inner);                  // lighter currents drifting inside
+  float glint = pow(max(dot(pn, Hs), 0.), 60.) * smoothstep(.15, .7, spots) * (mud ? .2 : 1.15);
+  col += pow(max(dot(pn, Hs), 0.), 5.) * (mud ? .02 : .1);
+  glint += pow(max(dot(pn, Hs), 0.), 22.) * (mud ? .05 : .32);                          // one soft wet highlight per blob
   if (mud) col = mix(col, base, .35);
   float depth = dome;
   col *= 1. - .0 * crease;                                                                     // thin crease where colours meet
@@ -148,9 +159,9 @@ void main(){
   // pop flash
   float fd = length((uv - u_flash.xy) * vec2(1., u_tx.x / u_tx.y));
   col += u_flash.w * smoothstep(u_flash.z, u_flash.z * .4, fd) * .45;
-  bool spray = false;
-  float a = m * (spray ? .92 : .97);
-  o = vec4(col * a, a);
+  float a = m * alpha;
+  float gl = glint * m;
+  o = vec4(col * a + gl, min(1., a + gl * .6));
 }`;
 
 function compile(gl, type, src) {
