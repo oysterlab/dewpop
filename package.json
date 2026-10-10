@@ -1,0 +1,1 @@
+{"name": "dewpop", "private": true, "type": "module", "scripts": {"start": "node server.mjs", "test": "node tests.mjs", "test:browser": "node browser-test.mjs", "replay": "node replay.mjs", "analyze": "node analyze.mjs"}, "devDependencies": {"playwright": "^1.56.0"}}

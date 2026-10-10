@@ -1,0 +1,6 @@
+node_modules/
+logs/
+recordings/
+shots/
+assets-src/*.log
+.DS_Store

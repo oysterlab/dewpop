@@ -1,0 +1,18 @@
+{
+  "name": "DEWPOP",
+  "short_name": "DEWPOP",
+  "description": "같은 색 물방울을 벽에서 벽까지 이어 팡! 터뜨리는 액체 물리 퍼즐",
+  "lang": "ko",
+  "start_url": "./",
+  "scope": "./",
+  "display": "fullscreen",
+  "display_override": ["fullscreen", "standalone"],
+  "orientation": "portrait",
+  "background_color": "#06302f",
+  "theme_color": "#0d4a46",
+  "icons": [
+    { "src": "assets/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "assets/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "assets/icon-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

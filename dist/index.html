@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#0d4a46">
+<title>DEWPOP</title>
+<meta name="description" content="같은 색 물방울을 합쳐 팡! 터뜨리는 액체 물리 퍼즐">
+<link rel="icon" href="assets/icon.png">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="DEWPOP">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Jua&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+  <div class="top-ui">
+  <header class="hud">
+    <i class="rec-dot" aria-label="플레이 기록 중">● REC</i>
+    <div class="best"><span class="crown" id="crown" aria-hidden="true">♛</span><b id="best">0</b></div>
+    <div class="score-box"><span id="scoreLabel" class="score-label">SCORE</span><b id="score">0</b><small id="mudIn" class="badge hidden"></small><small id="timer" class="timer hidden"></small></div>
+    <div class="hud-btns">
+      <button id="soundBtn" class="icon-btn" aria-label="소리 끄기"></button>
+      <button id="homeBtn" class="icon-btn" aria-label="처음 화면"></button>
+    </div>
+  </header>
+
+  <div id="goals" class="goals" aria-live="polite"></div>
+  <div id="weights" class="weights" aria-label="색의 무게 순서"></div>
+  </div>
+
+  <main class="stage">
+    <div id="boardWrap" class="board-wrap">
+      <div class="tank" id="tank"><i class="danger-line"></i></div>
+      <canvas id="board" aria-label="물방울 수조"></canvas>
+      <canvas id="deco" class="deco" aria-hidden="true"></canvas>
+      <div id="popups" class="popups"></div>
+    </div>
+  </main>
+
+  <div class="tilt-row">
+    <button id="tiltL" class="tilt-btn" aria-label="왼쪽으로 기울이기"><svg viewBox="0 0 24 24"><path d="M9 5 3 11l6 6M3.5 11H14a7 7 0 0 1 7 7v1"/></svg></button>
+    <div class="tray-col">
+      <div class="charges">
+        <div class="pips" id="pips"></div>
+        <div class="meter"><i id="meter"></i></div>
+      </div>
+      <div id="tray" class="tray"></div>
+    </div>
+    <button id="tiltR" class="tilt-btn" aria-label="오른쪽으로 기울이기"><svg viewBox="0 0 24 24"><path d="m15 5 6 6-6 6M20.5 11H10a7 7 0 0 0-7 7v1"/></svg></button>
+  </div>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+</div>
+
+<canvas id="fx" class="fx"></canvas>
+
+<section id="title" class="overlay">
+  <div class="title-inner">
+    <img class="logo" src="assets/logo.png" alt="DEWPOP">
+    <p class="tagline">같은 색을 벽에서 벽까지, 팡!</p>
+    <button id="playBtn" class="big-btn"><span id="playLabel">어드벤처</span></button>
+    <button id="blitzBtn" class="sub-btn blitz-btn">⏱ 타임어택 90초 <span class="title-best">최고 <b id="blitzBest">0</b></span></button>
+    <button id="endlessBtn" class="sub-btn">무한 모드 <span class="title-best">최고 <b id="titleBest">0</b></span></button>
+    <button id="installBtn" class="sub-btn install-btn hidden">📲 홈 화면에 추가</button>
+  </div>
+</section>
+
+<section id="installHelp" class="overlay hidden">
+  <div class="card install-card">
+    <h2>홈 화면에 추가</h2>
+    <ol class="install-steps" id="installSteps"></ol>
+    <button id="installClose" class="big-btn">알겠어요</button>
+  </div>
+</section>
+
+<section id="over" class="overlay hidden">
+  <div class="card">
+    <h2 id="overTitle">물이 넘쳤어요!</h2>
+    <div id="stars" class="stars"></div>
+    <div class="final"><span>SCORE</span><b id="finalScore">0</b><em id="newBest" class="new-best hidden">NEW BEST!</em></div>
+    <dl class="stats">
+      <div><dt>최대 연쇄</dt><dd id="stChain">0</dd></div>
+      <div><dt>팡!</dt><dd id="stPops">0</dd></div>
+      <div><dt>떨어뜨린 방울</dt><dd id="stPlaced">0</dd></div>
+    </dl>
+    <button id="againBtn" class="big-btn">다시 하기</button>
+    <button id="mapBtn" class="sub-btn hidden">레벨 지도</button>
+  </div>
+</section>
+
+<section id="map" class="overlay hidden">
+  <div class="map-inner">
+    <header class="map-head"><button id="mapBack" class="icon-btn" aria-label="뒤로"><svg viewBox="0 0 24 24"><path d="M15 5 8 12l7 7"/></svg></button><h2>어드벤처</h2><span></span></header>
+    <div id="levelGrid" class="level-grid"></div>
+  </div>
+</section>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>

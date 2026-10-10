@@ -1,0 +1,10 @@
+import { chromium } from 'playwright';
+const [,, name, script, wait = 3000] = process.argv;
+const b = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+const p = await b.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 });
+const logs = []; p.on('pageerror', e => logs.push('ERR ' + e.message));
+await p.goto('http://localhost:4181/'); await p.waitForTimeout(1200);
+await p.evaluate(script); await p.waitForTimeout(+wait);
+await p.screenshot({ path: `shots/${name}.png` });
+console.log(logs.join('\n'));
+await b.close();
