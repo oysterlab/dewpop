@@ -75,6 +75,8 @@ function hiss(dur, { vol = .12, from = 2500, to = 900, q = 1.2, at = 0 } = {}) {
   g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vol, t + .02); g.gain.exponentialRampToValueAtTime(.0008, t + dur);
   s.connect(f).connect(g).connect(a.destination); s.start(t); s.stop(t + dur + .05);
 }
+// a wax "crack": a very short bright noise click (many of them = crunch)
+const crack = (at = 0, vol = .09) => hiss(.03 + Math.random() * .02, { vol, from: 4200 + Math.random() * 2500, to: 2500, q: .9, at });
 // a water "plip": a fast upward sine sweep
 const plip = (f = 500, at = 0, vol = .14) => tone(f, .09, { vol, at, slide: 2.6 });
 const sfx = {
@@ -90,9 +92,11 @@ const sfx = {
     tone(b / 2, dur, { type: 'sine', vol: .06, slide: 2.2 });
     hiss(dur, { vol: .05, from: 600, to: 5000, q: 1.5 });
     [.22, .24].forEach(t => tone(1500, .05, { type: 'square', vol: .03, at: t }));
+    for (let k = 0; k < 9; k++) crack(Math.random() * dur * .9, .05 + Math.random() * .04); // the wax skin starts to crack
   },
   pop(chain) {
     const base = 520 * Math.pow(2, Math.min(chain - 1, 6) * 2 / 12);
+    for (let k = 0; k < 16; k++) crack(Math.pow(Math.random(), 1.8) * .18, .1 + Math.random() * .08); // 바삭: the shell shatters
     for (let k = 0; k < 10; k++) plip(base * (1 + Math.random() * 1.2), k * .03 + Math.random() * .02, .1);
     hiss(.8, { vol: .14, from: 6000, to: 1200, q: .6 });
     tone(95, .45, { vol: .22, slide: .5 });
@@ -128,10 +132,10 @@ const HAPTIC = {
   grab: 6, detent: 3, drop: 10,
   land: size => size === 2 ? [22] : size === 1 ? [16] : [10],
   merge: [8],
-  lock: [8, 40, 12, 40, 18],
+  lock: [6, 30, 6, 45, 8, 35, 10, 40, 14], // crackle while the wax splits
   pop: (chain, combo) => {
-    if (chain >= 2) return [30, 30, 30, 30, 70];
-    const c = Math.min(combo || 1, 6), pat = [];
+    if (chain >= 2) return [8, 14, 8, 14, 30, 30, 30, 30, 70];
+    const c = Math.min(combo || 1, 6), pat = [8, 14, 8, 14, 10, 20]; // crunch first
     for (let k = 0; k < c; k++) pat.push(26 + k * 6, Math.max(18, 40 - k * 5));
     if (c >= 3) pat.push(70); // 팡팡 — final thump
     return pat;
@@ -221,7 +225,7 @@ function startGame(kind = 'endless', level = 0, seedOverride) {
     tutorial = !!def.tutorial;
   } else if (kind === 'blitz' && E.blitzRules) { world = E.seededWorld(seed, E.blitzRules()); tutorial = false; }
   else { world = E.seededWorld(seed); tutorial = false; }
-  shownScore = 0; tutStep = 0; spray.length = 0; sparks.length = 0; locks.length = 0; waves.length = 0; lastCharges = -1; sel = kind === "level" && LEVELS[level].tutorial ? 0 : 2; aim = null;
+  shownScore = 0; tutStep = 0; spray.length = 0; sparks.length = 0; shards.length = 0; locks.length = 0; waves.length = 0; lastCharges = -1; sel = kind === "level" && LEVELS[level].tutorial ? 0 : 2; aim = null;
   clearTimeout(endTimer); endTimer = 0;
   ['over', 'title', 'map'].forEach(id => $(id).classList.add('hidden'));
   mode = 'play'; boardWrap.className = 'board-wrap';
@@ -553,7 +557,7 @@ function showCoach() {
 function hideCoach() { coachAnim?.cancel(); coachEl?.remove(); coachEl = null; }
 
 // --- spray (visual-only droplets, rendered by the liquid shader) ------------------
-const spray = [], sparks = [], locks = [], waves = [];
+const spray = [], sparks = [], locks = [], waves = [], shards = [];
 // hype words (Gen-Z slang, kept clean)
 const pickOne = a => a[(Math.random() * a.length) | 0];
 const HYPE = {
@@ -598,7 +602,11 @@ function onEvents(events) {
     if (ev.type === 'lock') {
       // show the join: a light runs from the joining point to both walls, the body charges up
       const dur = ev.steps / E.TPS;
-      locks.push({ ...ev, t0: performance.now(), dur: dur * 1000 });
+      // a jagged crack along the line (fixed per lock) plus a few short branches
+      const crk = [], br = [];
+      for (let x = E.WALL, y = 0; x <= W - E.WALL + .01; x += .25 + Math.random() * .7) { y = Math.max(-.5, Math.min(.5, y + (Math.random() - .5) * .55)); crk.push([x, y]); }
+      for (let k = 0; k < 9; k++) br.push({ x: E.WALL + Math.random() * (W - 2 * E.WALL), a: (Math.random() < .5 ? -1 : 1) * (.5 + Math.random() * .9), l: .5 + Math.random() * 1.3 });
+      locks.push({ ...ev, t0: performance.now(), dur: dur * 1000, crk, br });
       const [sx, sy] = [ev.x * unit, (ev.y - VIEW_TOP) * unit];
       popup(pickOne(HYPE.lock), sx, Math.max(30, sy - unit * 2.2), 'link');
       sfx.lock(world.chain, dur); buzz(HAPTIC.lock);
@@ -612,6 +620,10 @@ function onEvents(events) {
         // sparkles all along the line on the page overlay
         if (!reduced) for (let k = 0; k < 14; k++) { const i = (Math.random() * g.n) | 0; const [x, y] = toScreen(g.pts[i * 2], g.pts[i * 2 + 1]); sparkAt(x, y, E.COLORS[g.color].hex, 3); }
         waves.push({ y: g.cy, color: E.COLORS[g.color].hex, t0: performance.now() });
+        if (!reduced) for (let k = 0; k < 22; k++) { // broken wax shell flies off
+          const i = (Math.random() * g.n) | 0, [x, y] = toScreen(g.pts[i * 2], g.pts[i * 2 + 1]), a = -Math.PI / 2 + (Math.random() - .5) * 2.6, sp = 3 + Math.random() * 7;
+          shards.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, rot: Math.random() * 6.28, vr: (Math.random() - .5) * .5, size: unit * (.35 + Math.random() * .55), color: E.COLORS[g.color].hex, life: 1, k: Math.random() });
+        }
       }
       cx /= ev.groups.length; cy /= ev.groups.length;
       if (ev.mudPts.length) splash(ev.mudPts, E.MUD, cx, cy, .7);
@@ -793,6 +805,8 @@ let buf = new Float32Array(E.MAXP * 4 + 4000);
 let dropBubbles = [];
 function dropsSplat(drops, put) {
   const R = E.dropR(E.DROP_N) * 1.9, Cl = E.CELL;
+  const dr = E.dropR(E.DROP_N);
+  for (const [x, y] of drops) dropBubbles.push([x - dr * .5, y - dr * .55, dr * .42, -1]);
   drops.forEach(([x, y, c], j) => { // a few bubbles per drop, placed differently in each one
     let h = (j * 7 + c * 13 + 5) % 17;
     const nb = 1 + h % 3;
@@ -909,18 +923,23 @@ function drawDeco(time, held) {
     const u = Math.min(1, 1 - live.t / L.steps);
     const run = Math.min(1, u / .4), e = 1 - Math.pow(1 - run, 3);
     const x0 = L.x - (L.x - E.WALL) * e, x1 = L.x + (W - E.WALL - L.x) * e, hex = E.COLORS[L.color].hex;
-    c.save(); c.globalCompositeOperation = 'lighter';
+    // the wax skin cracks from the join point out to both walls, then the walls flash
     const pulse = .6 + .4 * Math.sin(u * 30);
-    c.shadowColor = hex; c.shadowBlur = 1.2;
-    c.strokeStyle = hex; c.globalAlpha = .9; c.lineWidth = .9 + .5 * pulse; c.lineCap = 'round';
-    c.beginPath(); c.moveTo(x0, L.y); c.lineTo(x1, L.y); c.stroke();
-    c.strokeStyle = '#fff'; c.lineWidth = .35 + .25 * pulse;
-    c.beginPath(); c.moveTo(x0, L.y); c.lineTo(x1, L.y); c.stroke();
+    c.save(); c.lineCap = 'round'; c.lineJoin = 'round';
+    const pts = L.crk.filter(([x]) => x >= x0 - .3 && x <= x1 + .3);
+    const path = () => { c.beginPath(); pts.forEach(([x, dy], j) => j ? c.lineTo(x, L.y + dy) : c.moveTo(x, L.y + dy)); };
+    c.globalAlpha = .35 + .15 * pulse; c.strokeStyle = hex; c.lineWidth = .45; c.shadowColor = hex; c.shadowBlur = .8; path(); c.stroke();
+    c.shadowBlur = 0; c.globalAlpha = .9; c.strokeStyle = 'rgba(40,30,40,.55)'; c.lineWidth = .2; path(); c.stroke();
+    c.globalAlpha = 1; c.strokeStyle = '#fff'; c.lineWidth = .11; c.translate(-.06, -.07); path(); c.stroke(); c.translate(.06, .07);
+    // branches appear once the crack has passed them
+    c.strokeStyle = '#fff'; c.lineWidth = .09; c.globalAlpha = .85;
+    for (const b of L.br) if (b.x >= x0 && b.x <= x1) { const l = b.l * Math.min(1, u * 2.2); c.beginPath(); c.moveTo(b.x, L.y); c.lineTo(b.x + Math.cos(b.a) * l * .5, L.y + Math.sin(b.a) * l); c.stroke(); }
     // ring at the joining point
     const rr = .5 + u * 4; c.globalAlpha = Math.max(0, .9 - u); c.lineWidth = .25; c.strokeStyle = '#fff';
     c.beginPath(); c.arc(L.x, L.jy, rr, 0, 6.283); c.stroke();
     // wall hits
     if (run >= 1) {
+      c.globalCompositeOperation = 'lighter';
       const h = Math.max(0, 1 - (u - .4) / .5);
       for (const wx of [0, W - .6]) { const g = c.createLinearGradient(wx, 0, wx + .6, 0); g.addColorStop(0, '#fff'); g.addColorStop(1, hex);
         c.globalAlpha = h; c.fillStyle = g; c.fillRect(wx, L.y - 2.5, .6, 5); }
@@ -984,14 +1003,28 @@ function drawDeco(time, held) {
   }
   // little bubbles suspended deep inside the jelly (reference style: a slightly lighter translucent bead
   // with a tiny glint upper-left and a soft shade lower-right — no outlines). They ride with the liquid.
-  const bubble = (bx, by, r) => {
-    const g = c.createRadialGradient(bx - r * .3, by - r * .35, r * .1, bx, by, r);
-    g.addColorStop(0, 'rgba(255,255,255,.4)'); g.addColorStop(.7, 'rgba(255,255,255,.2)'); g.addColorStop(1, 'rgba(255,255,255,.08)');
-    c.fillStyle = g; c.beginPath(); c.arc(bx, by, r, 0, 6.283); c.fill();
-    c.fillStyle = 'rgba(0,0,0,.07)'; c.beginPath(); c.arc(bx + r * .18, by + r * .2, r * .82, .2, 1.9); c.arc(bx, by, r, 1.9, .2, true); c.fill();
-    c.fillStyle = 'rgba(255,255,255,.9)'; c.beginPath(); c.arc(bx - r * .38, by - r * .4, r * .22, 0, 6.283); c.fill();
+  // what floats inside the slime (왁뿌볼 style): little pearly beads and twinkling glitter flakes
+  const bubble = (bx, by, r, seed = 0) => {
+    if (seed < 0) { // wet highlight on a drop: a soft white tilted oval
+      c.save(); c.translate(bx, by); c.rotate(-.6); c.scale(1, .55);
+      const g = c.createRadialGradient(0, 0, 0, 0, 0, r); g.addColorStop(0, 'rgba(255,255,255,.85)'); g.addColorStop(.6, 'rgba(255,255,255,.35)'); g.addColorStop(1, 'rgba(255,255,255,0)');
+      c.fillStyle = g; c.beginPath(); c.arc(0, 0, r, 0, 6.283); c.fill(); c.restore(); return;
+    }
+    const kind = seed % 3;
+    if (kind === 0) { // pearly bead
+      const g = c.createRadialGradient(bx - r * .35, by - r * .4, r * .05, bx, by, r);
+      g.addColorStop(0, 'rgba(255,255,255,.95)'); g.addColorStop(.55, 'rgba(255,246,252,.7)'); g.addColorStop(1, 'rgba(255,255,255,.25)');
+      c.fillStyle = g; c.beginPath(); c.arc(bx, by, r * .8, 0, 6.283); c.fill();
+      return;
+    }
+    // glitter flake: a tiny four-point star that twinkles as it turns
+    const tw = .5 + .5 * Math.sin(time * 3.2 + seed * 1.7), L = r * (.9 + tw * .9), w = L * .22;
+    c.save(); c.translate(bx, by); c.rotate(seed * .7 + time * .3);
+    c.globalAlpha = .35 + .65 * tw; c.fillStyle = kind === 1 ? '#fff' : '#fff3c4';
+    c.beginPath(); c.moveTo(0, -L); c.lineTo(w, -w); c.lineTo(L, 0); c.lineTo(w, w); c.lineTo(0, L); c.lineTo(-w, w); c.lineTo(-L, 0); c.lineTo(-w, -w); c.closePath(); c.fill();
+    c.restore();
   };
-  for (const [bx, by, r] of dropBubbles) bubble(bx, by, r);
+  dropBubbles.forEach(([bx, by, r, sd], k) => bubble(bx, by, r, sd ?? k));
   if (world.tag && world.grid) {
     const C = E.COLS, sm2 = smBuf;
     for (let i = 0; i < world.n; i++) {
@@ -1000,7 +1033,7 @@ function drawDeco(time, held) {
       const gc = world.gx[i], gr = world.gy[i], col = world.c[i]; let inside = true;
       for (let dr = -1; dr <= 1 && inside; dr++) for (let dc = -1; dc <= 1; dc++) { const cc = gc + dc, rr = gr + dr; if (cc < 0 || cc >= C || rr >= E.ROWS) { inside = false; break; } const j = world.grid[rr * C + cc]; if (j < 0 || world.c[j] !== col) { inside = false; break; } }
       if (!inside) continue;
-      bubble((sm2 ? sm2[i * 2] : world.x[i]) + Math.sin(time * .6 + i) * .18, (sm2 ? sm2[i * 2 + 1] : world.y[i]) + Math.cos(time * .5 + i * 1.7) * .14, .18 + (t % 3) * .09);
+      bubble((sm2 ? sm2[i * 2] : world.x[i]) + Math.sin(time * .6 + i) * .18, (sm2 ? sm2[i * 2 + 1] : world.y[i]) + Math.cos(time * .5 + i * 1.7) * .14, .16 + (t % 3) * .07, t);
     }
   }
   if (pearlImg.complete && pearlImg.naturalWidth) for (const p of world.pearls) if (p.alive) {
@@ -1017,6 +1050,20 @@ function drawFx() {
     if (p.life <= 0) { sparks.splice(k, 1); continue; }
     fx.globalAlpha = Math.min(1, p.life * 1.5); fx.fillStyle = p.color;
     fx.beginPath(); fx.arc(p.x, p.y, p.size * (.25 + .35 * p.life), 0, 6.283); fx.fill(); // soft round droplets, not star glitter
+  }
+  // wax shards: thin milky flakes tinted by their slime, tumbling as they fall
+  for (let k = shards.length - 1; k >= 0; k--) {
+    const p = shards[k];
+    p.x += p.vx; p.y += p.vy; p.vy += .35; p.vx *= .985; p.rot += p.vr; p.life -= .014;
+    if (p.life <= 0 || p.y > innerHeight + 40) { shards.splice(k, 1); continue; }
+    const z = p.size, flip = Math.cos(p.rot * 1.7);
+    fx.save(); fx.translate(p.x, p.y); fx.rotate(p.rot); fx.scale(1, .35 + .65 * Math.abs(flip));
+    fx.globalAlpha = Math.min(1, p.life * 1.6) * .95;
+    fx.beginPath(); fx.moveTo(-z, -z * .3); fx.lineTo(z * (.2 + p.k * .6), -z * .7); fx.lineTo(z, z * .4); fx.lineTo(-z * .3, z * .6); fx.closePath();
+    fx.fillStyle = p.color; fx.fill();
+    fx.globalAlpha *= .6; fx.fillStyle = '#fff'; fx.fill();          // milky wax over the colour
+    fx.globalAlpha = Math.min(1, p.life * 1.6); fx.strokeStyle = 'rgba(255,255,255,.9)'; fx.lineWidth = 1; fx.stroke();
+    fx.restore();
   }
   fx.globalAlpha = 1;
 }
