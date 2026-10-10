@@ -1,0 +1,377 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#0d4a46">
+<title>왁뿌볼 디자인 시안</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Jua&display=swap" rel="stylesheet">
+<style>
+  :root { --ink: #f4fffb; --soft: #b9e3da; --panel: rgba(4, 40, 42, .72); --line: rgba(255,255,255,.14); --hot: #ffb347; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    font-family: "Jua", system-ui, sans-serif; color: var(--ink); overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none;
+    background: #06302f;
+  }
+  body::before { content: ""; position: fixed; inset: -40px; z-index: -1; background: #06302f url(../assets/bg.jpg) center / cover; filter: blur(16px) brightness(.85); }
+  #app { height: 100%; max-width: 480px; margin: 0 auto; display: flex; flex-direction: column; gap: 10px;
+    padding: max(10px, env(safe-area-inset-top)) 12px max(12px, env(safe-area-inset-bottom)); }
+  h1 { margin: 0; font-size: 20px; font-weight: 400; text-align: center; letter-spacing: .5px; }
+  .seg { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; padding: 5px; border-radius: 16px; background: var(--panel); border: 1px solid var(--line); }
+  .seg button { font: inherit; font-size: 15px; color: var(--soft); background: transparent; border: 0; border-radius: 12px; padding: 9px 4px; }
+  .seg button.on { color: #073b37; background: linear-gradient(180deg, #fff, #d6fff2); box-shadow: 0 3px 0 rgba(0,0,0,.18); }
+  .desc { margin: 0; min-height: 40px; font-size: 14px; line-height: 1.4; color: var(--soft); text-align: center; }
+  .stage { flex: 1; min-height: 0; position: relative; }
+  canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .row button { font: inherit; font-size: 17px; color: #fff; border: 0; border-radius: 16px; padding: 14px 8px;
+    background: linear-gradient(180deg, #ffd27a, #ff8f6b); box-shadow: 0 5px 0 #c4583f; }
+  .row button.alt { background: linear-gradient(180deg, #8fe8ff, #4ba6ff); box-shadow: 0 5px 0 #2a6fbd; }
+  .row button:active { transform: translateY(4px); box-shadow: 0 1px 0 rgba(0,0,0,.3); }
+  .hint { margin: 0; font-size: 12px; text-align: center; color: rgba(255,255,255,.55); }
+</style>
+</head>
+<body>
+<div id="app">
+  <h1>왁뿌볼 디자인 시안</h1>
+  <div class="seg" id="seg">
+    <button data-s="0" class="on">A 고무공</button>
+    <button data-s="1">B 투명 말랑이</button>
+    <button data-s="2">C 왁스 볼</button>
+  </div>
+  <p class="desc" id="desc"></p>
+  <div class="stage" id="stage"><canvas id="cv"></canvas></div>
+  <div class="row"><button id="dropBtn">떨어뜨리기</button><button id="popBtn" class="alt">빠작! 깨기</button></div>
+  <p class="hint">수조를 터치하면 그 자리에 떨어져요 · 같은 색 3개가 합쳐지면 깨져요</p>
+</div>
+<script>
+// Design prototype: every piece is a wax ball with a soft body (a ring of points held round by
+// edge springs + internal pressure), so it squashes when it lands, gets pressed by balls above,
+// and two same-coloured balls that stay pressed together fuse with a wobble. Three looks to compare.
+const STYLES = [
+  { name: 'A 고무공', desc: '왁스 입힌 말랑이를 투명 고무로 감싸고 케이블타이로 묶은 요즘 왁뿌볼. 꼭지가 있어 한눈에 왁뿌볼!' },
+  { name: 'B 투명 말랑이', desc: '투명한 말랑이 안에 왁스 볼이 들어 있는 타입. 속 볼이 출렁이며 따라 움직여요.' },
+  { name: 'C 왁스 볼', desc: '겉이 그대로 왁스인 볼. 파스텔 마블 무늬와 굳은 왁스 방울, 은은한 왁스 광.' },
+];
+const COLORS = [
+  { base: '#ff7fa8', light: '#ffd0df', dark: '#d9487a', tie: '#ffe14d' },  // strawberry
+  { base: '#4fdcb4', light: '#c8fff0', dark: '#1fa883', tie: '#ff6f91' },  // mint
+  { base: '#ffcf4a', light: '#fff2b8', dark: '#e09a12', tie: '#59b8ff' },  // lemon
+  { base: '#a98bff', light: '#e6dcff', dark: '#7155e0', tie: '#7dffb1' },  // grape
+];
+let style = 0;
+const cv = document.getElementById('cv'), ctx = cv.getContext('2d'), stage = document.getElementById('stage');
+let Wpx = 300, Hpx = 500, dpr = 1, R0 = 26;      // tank size in css px, base ball radius
+const tank = { l: 0, r: 0, b: 0, t: 0 };
+function resize() {
+  dpr = Math.min(devicePixelRatio || 1, 2);
+  Wpx = stage.clientWidth; Hpx = stage.clientHeight;
+  cv.width = Wpx * dpr; cv.height = Hpx * dpr;
+  tank.l = 14; tank.r = Wpx - 14; tank.b = Hpx - 12; tank.t = 70;
+  R0 = Math.max(16, Math.min(28, (tank.r - tank.l) / 14));
+}
+addEventListener('resize', resize); resize();
+
+// --- soft balls ------------------------------------------------------------------------
+const N = 22, balls = [];
+let idSeq = 1;
+function makeBall(x, y, c, R, stretch = null) {
+  const b = { id: idSeq++, c, R, A0: Math.PI * R * R, p: [], v: [], age: 0, touch: new Map(), crack: 0, popping: 0, units: 1,
+    knot: 0, seed: Math.random() * 1000, wob: 0, inner: { x, y, vx: 0, vy: 0 } };
+  for (let k = 0; k < N; k++) {
+    const a = -Math.PI / 2 + k / N * Math.PI * 2;
+    let ox = Math.cos(a) * R, oy = Math.sin(a) * R;
+    if (stretch) { const d = ox * stretch.x + oy * stretch.y; ox += stretch.x * d * stretch.k; oy += stretch.y * d * stretch.k; }
+    b.p.push({ x: x + ox, y: y + oy }); b.v.push({ x: 0, y: 0 });
+  }
+  b.L0 = 2 * R * Math.sin(Math.PI / N);
+  balls.push(b); return b;
+}
+const centroid = b => { let x = 0, y = 0; for (const q of b.p) { x += q.x; y += q.y; } return { x: x / N, y: y / N }; };
+function area(b) { let a = 0; for (let k = 0; k < N; k++) { const p = b.p[k], q = b.p[(k + 1) % N]; a += p.x * q.y - q.x * p.y; } return a / 2; }
+
+const G = 1500, SUB = 8;
+function step(dt) {
+  const h = dt / SUB;
+  for (let s = 0; s < SUB; s++) {
+    for (const b of balls) {
+      const A = area(b), press = (b.A0 - A) / b.A0 * 42000, c = centroid(b);
+      const f = b.p.map(() => ({ x: 0, y: G }));
+      for (let k = 0; k < N; k++) {
+        const i = k, j = (k + 1) % N, p = b.p[i], q = b.p[j];
+        let dx = q.x - p.x, dy = q.y - p.y; const L = Math.hypot(dx, dy) || 1; dx /= L; dy /= L;
+        // edge spring + damping along the edge
+        const rv = (b.v[j].x - b.v[i].x) * dx + (b.v[j].y - b.v[i].y) * dy;
+        const fs = (L - b.L0) * 900 + rv * 14;
+        f[i].x += dx * fs; f[i].y += dy * fs; f[j].x -= dx * fs; f[j].y -= dy * fs;
+        // pressure pushes each edge outward (the ring has positive shoelace area, so (dy,-dx) points out)
+        const nx = dy, ny = -dx, fp = press * L * .5;
+        f[i].x += nx * fp; f[i].y += ny * fp; f[j].x += nx * fp; f[j].y += ny * fp;
+      }
+      // gentle shape memory: each point is pulled toward its slot on a circle (keeps it a ball, not a bag)
+      // (shape matching: find how far the ball has rolled and pull toward its rest circle at that angle)
+      let sc = 0, ss = 0;
+      for (let k = 0; k < N; k++) { const a = -Math.PI / 2 + k / N * Math.PI * 2, qx = Math.cos(a), qy = Math.sin(a), rx = b.p[k].x - c.x, ry = b.p[k].y - c.y;
+        sc += rx * qx + ry * qy; ss += qx * ry - qy * rx; }
+      const th = Math.atan2(ss, sc);
+      for (let k = 0; k < N; k++) {
+        const a = -Math.PI / 2 + k / N * Math.PI * 2 + th, tx = c.x + Math.cos(a) * b.R, ty = c.y + Math.sin(a) * b.R;
+        f[k].x += (tx - b.p[k].x) * 650; f[k].y += (ty - b.p[k].y) * 650;
+      }
+      for (let k = 0; k < N; k++) {
+        const v = b.v[k], p = b.p[k];
+        v.x = (v.x + f[k].x * h) * .9985; v.y = (v.y + f[k].y * h) * .9985;
+        p.x += v.x * h; p.y += v.y * h;
+        // tank walls and floor (soft, a little friction)
+        if (p.y > tank.b) { p.y = tank.b; v.y *= -.15; v.x *= .9; }
+        if (p.x < tank.l) { p.x = tank.l; v.x *= -.2; }
+        if (p.x > tank.r) { p.x = tank.r; v.x *= -.2; }
+      }
+      // the inner ball of style B lags behind the shell (sloshes)
+      const ib = b.inner; ib.vx += (c.x - ib.x) * 60 * h - ib.vx * 6 * h; ib.vy += (c.y - ib.y) * 60 * h - ib.vy * 6 * h; ib.x += ib.vx * h; ib.y += ib.vy * h;
+    }
+    // ball-ball: push points of one ball out of the other (treat the other as a circle of its rest radius)
+    for (let a = 0; a < balls.length; a++) for (let b = a + 1; b < balls.length; b++) {
+      const A = balls[a], B = balls[b], ca = centroid(A), cb = centroid(B);
+      const dd = Math.hypot(ca.x - cb.x, ca.y - cb.y); if (dd > A.R + B.R + 6) continue;
+      for (const [P, Q] of [[A, B], [B, A]]) collide(P, Q);
+      if (A.c === B.c && !A.popping && !B.popping && dd < (A.R + B.R) * 1.0) {
+        const t = (A.touch.get(B.id) || 0) + dt; A.touch.set(B.id, t);
+        if (t > .3) merge(A, B);
+      } else A.touch.delete(B.id);
+    }
+  }
+}
+// outline-vs-outline contact: a point of P inside Q's ring is pushed to Q's nearest edge,
+// and that edge is pushed back the other way (both bodies give a little → they press, not overlap)
+function inside(Q, x, y) { let c = false; for (let k = 0, j = N - 1; k < N; j = k++) { const a = Q.p[k], b = Q.p[j];
+  if ((a.y > y) !== (b.y > y) && x < (b.x - a.x) * (y - a.y) / (b.y - a.y) + a.x) c = !c; } return c; }
+function collide(P, Q) {
+  for (let k = 0; k < N; k++) {
+    const p = P.p[k]; if (!inside(Q, p.x, p.y)) continue;
+    let best = 1e9, bi = 0, bt = 0, bx = 0, by = 0;
+    for (let e = 0; e < N; e++) { const a = Q.p[e], b = Q.p[(e + 1) % N], ex = b.x - a.x, ey = b.y - a.y, L2 = ex * ex + ey * ey || 1;
+      const t = Math.max(0, Math.min(1, ((p.x - a.x) * ex + (p.y - a.y) * ey) / L2)), qx = a.x + ex * t, qy = a.y + ey * t, d = (p.x - qx) ** 2 + (p.y - qy) ** 2;
+      if (d < best) { best = d; bi = e; bt = t; bx = qx; by = qy; } }
+    const dx = bx - p.x, dy = by - p.y;
+    p.x += dx * .5; p.y += dy * .5;
+    const a = Q.p[bi], b = Q.p[(bi + 1) % N];
+    a.x -= dx * .5 * (1 - bt); a.y -= dy * .5 * (1 - bt); b.x -= dx * .5 * bt; b.y -= dy * .5 * bt;
+    // kill the approaching velocity so stacks settle instead of jittering
+    const L = Math.hypot(dx, dy) || 1, nx = dx / L, ny = dy / L, vp = P.v[k], va = Q.v[bi], vb = Q.v[(bi + 1) % N];
+    const rel = (vp.x - (va.x + vb.x) / 2) * nx + (vp.y - (va.y + vb.y) / 2) * ny;
+    if (rel < 0) { vp.x -= nx * rel * .5; vp.y -= ny * rel * .5; va.x += nx * rel * .25; va.y += ny * rel * .25; vb.x += nx * rel * .25; vb.y += ny * rel * .25; }
+    vp.x *= .97; vp.y *= .97;
+  }
+}
+function merge(A, B) {
+  const ca = centroid(A), cb = centroid(B), ka = A.R * A.R, kb = B.R * B.R;
+  const x = (ca.x * ka + cb.x * kb) / (ka + kb), y = (ca.y * ka + cb.y * kb) / (ka + kb);
+  let ax = cb.x - ca.x, ay = cb.y - ca.y; const L = Math.hypot(ax, ay) || 1; ax /= L; ay /= L;
+  balls.splice(balls.indexOf(A), 1); balls.splice(balls.indexOf(B), 1);
+  // start stretched along the join so springs pull it round = the wobbly "꿀렁" merge
+  const nb = makeBall(x, y, A.c, Math.sqrt(ka + kb) * .97, { x: ax, y: ay, k: .55 });
+  nb.units = A.units + B.units; nb.inner.x = x; nb.inner.y = y;
+  sfx.squish();
+  if (nb.units >= 3) setTimeout(() => { if (balls.includes(nb)) startPop(nb); }, 450);
+}
+function startPop(b) { if (b.popping) return; b.popping = 1; b.crack = 0.001; sfx.crackle(); }
+
+// --- effects ---------------------------------------------------------------------------
+const shards = [], crumbs = [];
+function shatter(b) {
+  const c = centroid(b), col = COLORS[b.c];
+  for (let k = 0; k < 26; k++) {
+    const a = Math.random() * Math.PI * 2, r = Math.random() * b.R, sp = 120 + Math.random() * 380;
+    shards.push({ x: c.x + Math.cos(a) * r, y: c.y + Math.sin(a) * r, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 260, rot: Math.random() * 6, vr: (Math.random() - .5) * 14,
+      s: 4 + Math.random() * 8, col, life: 1, k: Math.random() });
+  }
+  for (let k = 0; k < 18; k++) { const a = Math.random() * Math.PI * 2, sp = 60 + Math.random() * 200;
+    crumbs.push({ x: c.x, y: c.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 180, r: 2 + Math.random() * 4, col, life: 1 }); }
+  balls.splice(balls.indexOf(b), 1);
+  sfx.crunch(); buzz([8, 14, 8, 14, 10, 20, 60]);
+}
+
+// --- sound (synth) & haptics -------------------------------------------------------------
+let ac = null, noise = null;
+function audio() {
+  try { if (!ac) { ac = new (window.AudioContext || window.webkitAudioContext)(); noise = ac.createBuffer(1, ac.sampleRate, ac.sampleRate); const d = noise.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; }
+    if (ac.state === 'suspended') ac.resume(); return ac; } catch { return null; }
+}
+function click(at, vol, f = 4500) { const a = audio(); if (!a) return; const t = a.currentTime + at, s = a.createBufferSource(), bp = a.createBiquadFilter(), g = a.createGain();
+  s.buffer = noise; bp.type = 'bandpass'; bp.frequency.value = f + Math.random() * 2500; bp.Q.value = .9;
+  g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(.001, t + .035 + Math.random() * .03);
+  s.connect(bp).connect(g).connect(a.destination); s.start(t, Math.random() * .5); s.stop(t + .08); }
+function thud(f, vol, dur, at = 0) { const a = audio(); if (!a) return; const t = a.currentTime + at, o = a.createOscillator(), g = a.createGain();
+  o.frequency.setValueAtTime(f, t); o.frequency.exponentialRampToValueAtTime(f * .55, t + dur); g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(.001, t + dur);
+  o.connect(g).connect(a.destination); o.start(t); o.stop(t + dur + .02); }
+const sfx = {
+  land(v) { thud(140, Math.min(.25, v / 3000), .16); },
+  squish() { thud(220, .12, .22); thud(330, .06, .18, .04); },
+  crackle() { for (let k = 0; k < 10; k++) click(Math.random() * .5, .06 + Math.random() * .05); },
+  crunch() { for (let k = 0; k < 22; k++) click(Math.pow(Math.random(), 1.8) * .2, .12 + Math.random() * .1); thud(110, .2, .3); },
+};
+const vib = typeof navigator.vibrate === 'function';
+function buzz(p) { try { if (vib) navigator.vibrate(p); } catch {} }
+
+// --- drawing -----------------------------------------------------------------------------
+function ringPath(b, scale = 1, c = centroid(b)) {
+  const pts = b.p.map(q => ({ x: c.x + (q.x - c.x) * scale, y: c.y + (q.y - c.y) * scale }));
+  ctx.beginPath();
+  for (let k = 0; k < N; k++) { const a = pts[k], m = pts[(k + 1) % N], mx = (a.x + m.x) / 2, my = (a.y + m.y) / 2;
+    if (k === 0) { const z = pts[N - 1]; ctx.moveTo((z.x + a.x) / 2, (z.y + a.y) / 2); }
+    ctx.quadraticCurveTo(a.x, a.y, mx, my); }
+  ctx.closePath();
+}
+const rnd = s => { const x = Math.sin(s) * 43758.5453; return x - Math.floor(x); };
+function shade(b, c, r, col, scale = 1) { // glossy clay/wax body fill with a light from the upper-left
+  const g = ctx.createRadialGradient(c.x - r * .35, c.y - r * .45, r * .1, c.x, c.y, r * 1.05);
+  g.addColorStop(0, col.light); g.addColorStop(.45, col.base); g.addColorStop(1, col.dark);
+  ringPath(b, scale, c); ctx.fillStyle = g; ctx.fill();
+}
+function waxGloss(b, c, r, scale, strong = 1) {
+  ctx.save(); ringPath(b, scale, c); ctx.clip();
+  // candle-wax sheen: a broad soft band + a crisp highlight + tiny bumps of uneven coating
+  const g = ctx.createLinearGradient(c.x - r, c.y - r, c.x + r * .3, c.y + r * .2);
+  g.addColorStop(0, `rgba(255,255,255,${.45 * strong})`); g.addColorStop(.5, 'rgba(255,255,255,.06)'); g.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = g; ctx.fillRect(c.x - r * 1.2, c.y - r * 1.2, r * 2.4, r * 2.4);
+  ctx.fillStyle = `rgba(255,255,255,${.85 * strong})`;
+  ctx.beginPath(); ctx.ellipse(c.x - r * .38, c.y - r * .45, r * .22, r * .11, -.7, 0, 6.283); ctx.fill();
+  ctx.beginPath(); ctx.arc(c.x - r * .08, c.y - r * .62, r * .05, 0, 6.283); ctx.fill();
+  for (let k = 0; k < 7; k++) { const a = rnd(b.seed + k) * 6.28, d = rnd(b.seed + k * 3.1) * r * .8;
+    ctx.fillStyle = 'rgba(255,255,255,.18)'; ctx.beginPath(); ctx.arc(c.x + Math.cos(a) * d, c.y + Math.sin(a) * d, r * (.05 + rnd(b.seed + k * 7) * .06), 0, 6.283); ctx.fill(); }
+  ctx.restore();
+}
+function cracks(b, c, r, scale) {
+  if (!b.crack) return;
+  ctx.save(); ringPath(b, scale, c); ctx.clip();
+  const n = 7, u = Math.min(1, b.crack);
+  for (let k = 0; k < n; k++) {
+    let a = rnd(b.seed + k * 9) * 6.28, x = c.x + Math.cos(a) * r * .15, y = c.y + Math.sin(a) * r * .15;
+    ctx.beginPath(); ctx.moveTo(x, y);
+    const segs = 5;
+    for (let s = 1; s <= segs * u; s++) { a += (rnd(b.seed + k * 13 + s) - .5) * 1.1; x += Math.cos(a) * r * .2; y += Math.sin(a) * r * .2; ctx.lineTo(x, y); }
+    ctx.strokeStyle = 'rgba(80,40,60,.35)'; ctx.lineWidth = 2.2; ctx.stroke();
+    ctx.strokeStyle = 'rgba(255,255,255,.9)'; ctx.lineWidth = 1; ctx.stroke();
+  }
+  ctx.restore();
+}
+function knot(b, c, col) {
+  // the tied end of the rubber skin + a cable tie, pointing along the ball's "up" (where point 0 sits)
+  const p = b.p[0], ax = p.x - c.x, ay = p.y - c.y, L = Math.hypot(ax, ay) || 1, ux = ax / L, uy = ay / L, ang = Math.atan2(uy, ux) + Math.PI / 2;
+  const s = b.R / 26;
+  ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(ang); ctx.scale(s, s);
+  // gathered rubber
+  ctx.beginPath(); ctx.moveTo(-7, 2); ctx.quadraticCurveTo(-3, -6, -2.5, -11); ctx.lineTo(2.5, -11); ctx.quadraticCurveTo(3, -6, 7, 2); ctx.closePath();
+  ctx.fillStyle = 'rgba(255,255,255,.35)'; ctx.fill(); ctx.strokeStyle = 'rgba(255,255,255,.75)'; ctx.lineWidth = 1.2; ctx.stroke();
+  // little frilly top
+  ctx.beginPath(); ctx.moveTo(-5, -14); ctx.quadraticCurveTo(0, -20, 5, -14); ctx.quadraticCurveTo(0, -12, -5, -14); ctx.fillStyle = 'rgba(255,255,255,.5)'; ctx.fill();
+  // cable tie band + head + tail
+  ctx.fillStyle = col.tie; ctx.strokeStyle = 'rgba(0,0,0,.25)'; ctx.lineWidth = .8;
+  ctx.beginPath(); ctx.roundRect(-4.5, -10, 9, 3.4, 1.2); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.roundRect(3, -11.2, 4.4, 5.6, 1); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(7.2, -9); ctx.quadraticCurveTo(12, -11, 13, -17); ctx.lineWidth = 2.4; ctx.strokeStyle = col.tie; ctx.stroke();
+  ctx.restore();
+}
+function drawBall(b, t) {
+  const c = centroid(b), r = b.R, col = COLORS[b.c];
+  // soft contact shadow
+  ctx.fillStyle = 'rgba(0,30,30,.18)'; ctx.beginPath(); ctx.ellipse(c.x + 3, c.y + r * .2 + 4, r * .95, r * .8, 0, 0, 6.283); ctx.fill();
+  if (style === 0) {
+    shade(b, c, r, col, .9); waxGloss(b, c, r, .9); cracks(b, c, r, .9);
+    // clear rubber skin around it
+    ringPath(b, 1, c); ctx.fillStyle = 'rgba(255,255,255,.1)'; ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,.7)'; ctx.lineWidth = 1.6; ctx.stroke();
+    ctx.save(); ringPath(b, 1, c); ctx.clip();
+    ctx.strokeStyle = 'rgba(255,255,255,.85)'; ctx.lineWidth = r * .09; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.arc(c.x, c.y, r * .86, Math.PI * 1.08, Math.PI * 1.38); ctx.stroke();
+    ctx.restore();
+    knot(b, c, col);
+  } else if (style === 1) {
+    // clear squishy shell (tinted glass-like) with the wax ball floating inside
+    ringPath(b, 1, c); const g = ctx.createRadialGradient(c.x - r * .3, c.y - r * .4, r * .1, c.x, c.y, r);
+    g.addColorStop(0, 'rgba(255,255,255,.28)'); g.addColorStop(.8, 'rgba(255,255,255,.08)'); g.addColorStop(1, 'rgba(255,255,255,.3)');
+    ctx.fillStyle = g; ctx.fill(); ctx.strokeStyle = 'rgba(255,255,255,.8)'; ctx.lineWidth = 1.4; ctx.stroke();
+    const ib = { x: Math.max(c.x - r * .15, Math.min(c.x + r * .15, b.inner.x)), y: Math.max(c.y - r * .12, Math.min(c.y + r * .14, b.inner.y + r * .08)) };
+    const ir = r * .58, fake = { p: b.p.map(q => ({ x: ib.x + (q.x - c.x) * .58, y: ib.y + (q.y - c.y) * .58 })), seed: b.seed, crack: b.crack, R: ir };
+    shade(fake, ib, ir, col); waxGloss(fake, ib, ir, 1); cracks(fake, ib, ir, 1);
+    // glitter in the clear jelly
+    ctx.save(); ringPath(b, .96, c); ctx.clip();
+    for (let k = 0; k < 9; k++) { const a = rnd(b.seed + k * 5) * 6.28 + t * .2, d = r * (.3 + rnd(b.seed + k) * .6), tw = .5 + .5 * Math.sin(t * 4 + k);
+      ctx.fillStyle = `rgba(255,255,255,${.3 + .6 * tw})`; ctx.beginPath(); ctx.arc(c.x + Math.cos(a) * d, c.y + Math.sin(a) * d, 1 + tw * 1.2, 0, 6.283); ctx.fill(); }
+    ctx.restore();
+    ctx.save(); ringPath(b, 1, c); ctx.clip(); ctx.strokeStyle = 'rgba(255,255,255,.95)'; ctx.lineWidth = r * .1; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.arc(c.x, c.y, r * .84, Math.PI * 1.1, Math.PI * 1.4); ctx.stroke(); ctx.restore();
+  } else {
+    // solid wax ball: pastel marble swirl, soft waxy sheen, a few hardened drips on top
+    shade(b, c, r, col);
+    ctx.save(); ringPath(b, 1, c); ctx.clip();
+    ctx.lineCap = 'round';
+    for (let k = 0; k < 3; k++) { ctx.strokeStyle = k % 2 ? 'rgba(255,255,255,.35)' : col.light; ctx.globalAlpha = .55; ctx.lineWidth = r * (.12 + k * .05);
+      ctx.beginPath(); const ph = b.seed + k * 2; ctx.moveTo(c.x - r, c.y + Math.sin(ph) * r * .4);
+      ctx.bezierCurveTo(c.x - r * .3, c.y - r * (.6 + k * .2), c.x + r * .2, c.y + r * (.7 - k * .3), c.x + r, c.y + Math.cos(ph) * r * .4); ctx.stroke(); }
+    ctx.globalAlpha = 1; ctx.restore();
+    waxGloss(b, c, r, 1, .7); cracks(b, c, r, 1);
+    for (let k = 0; k < 4; k++) { const i = (k * 5 + 1) % N, q = b.p[i]; if (q.y > c.y - r * .2) continue;
+      ctx.fillStyle = col.light; ctx.beginPath(); ctx.ellipse(q.x, q.y + 3, 3.2, 5 + rnd(b.seed + k) * 4, 0, 0, 6.283); ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,.7)'; ctx.beginPath(); ctx.arc(q.x - 1, q.y + 1.5, 1.1, 0, 6.283); ctx.fill(); }
+    ringPath(b, 1, c); ctx.strokeStyle = 'rgba(0,0,0,.12)'; ctx.lineWidth = 1; ctx.stroke();
+  }
+}
+function drawTank() {
+  ctx.fillStyle = 'rgba(255,255,255,.06)'; ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.roundRect(tank.l - 6, tank.t, tank.r - tank.l + 12, tank.b - tank.t + 6, [8, 8, 18, 18]); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = 'rgba(255,255,255,.4)'; ctx.beginPath(); ctx.roundRect(tank.l - 10, tank.t - 4, tank.r - tank.l + 20, 7, 4); ctx.fill();
+}
+function drawFx(dt) {
+  for (let k = shards.length - 1; k >= 0; k--) { const s = shards[k]; s.vy += 900 * dt; s.x += s.vx * dt; s.y += s.vy * dt; s.rot += s.vr * dt; s.life -= dt * .9;
+    if (s.life <= 0) { shards.splice(k, 1); continue; }
+    ctx.save(); ctx.translate(s.x, s.y); ctx.rotate(s.rot); ctx.scale(1, .4 + .6 * Math.abs(Math.cos(s.rot * 1.3))); ctx.globalAlpha = Math.min(1, s.life * 2);
+    ctx.beginPath(); ctx.moveTo(-s.s, -s.s * .3); ctx.lineTo(s.s * (.2 + s.k * .6), -s.s * .7); ctx.lineTo(s.s, s.s * .4); ctx.lineTo(-s.s * .3, s.s * .6); ctx.closePath();
+    ctx.fillStyle = s.col.base; ctx.fill(); ctx.globalAlpha *= .55; ctx.fillStyle = '#fff'; ctx.fill(); ctx.globalAlpha = Math.min(1, s.life * 2); ctx.strokeStyle = '#fff'; ctx.lineWidth = .8; ctx.stroke(); ctx.restore(); }
+  for (let k = crumbs.length - 1; k >= 0; k--) { const s = crumbs[k]; s.vy += 900 * dt; s.x += s.vx * dt; s.y += s.vy * dt; s.life -= dt * 1.1;
+    if (s.life <= 0) { crumbs.splice(k, 1); continue; }
+    ctx.globalAlpha = Math.min(1, s.life * 2); ctx.fillStyle = s.col.base; ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, 6.283); ctx.fill(); ctx.globalAlpha = 1; }
+}
+
+// --- loop & input --------------------------------------------------------------------------
+function dropAt(x, c = (Math.random() * COLORS.length) | 0) {
+  if (balls.length > 14) balls.splice(0, balls.length - 14);
+  const R = R0 * (.95 + Math.random() * .1);
+  const b = makeBall(Math.max(tank.l + R, Math.min(tank.r - R, x)), tank.t - R - 8, c, R);
+  for (const v of b.v) v.y = 120;
+  b.wob = (Math.random() - .5) * .5;
+}
+let last = performance.now(), auto = 0, landed = new Set();
+function frame(now) {
+  const dt = Math.min(1 / 30, (now - last) / 1000); last = now;
+  step(dt);
+  for (const b of balls) {
+    const c = centroid(b), vy = b.v.reduce((a, v) => a + v.y, 0) / N;
+    if (!landed.has(b.id) && c.y > tank.t + 20 && Math.abs(vy) < 40) { landed.add(b.id); sfx.land(500); buzz(12); }
+    if (b.crack) { b.crack += dt * 2.2; if (b.crack > 1.25) shatter(b); }
+  }
+  auto += dt; if (auto > 1.3 && balls.length < 11) { auto = 0; dropAt(tank.l + 30 + Math.random() * (tank.r - tank.l - 60)); }
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, Wpx, Hpx);
+  drawTank();
+  const t = now / 1000;
+  for (const b of balls) drawBall(b, t);
+  drawFx(dt);
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+cv.addEventListener('pointerdown', e => { audio(); const r = cv.getBoundingClientRect(); dropAt(e.clientX - r.left); auto = 0; buzz(6); });
+document.getElementById('dropBtn').onclick = () => { audio(); dropAt(tank.l + 30 + Math.random() * (tank.r - tank.l - 60)); auto = 0; };
+document.getElementById('popBtn').onclick = () => { audio(); const big = balls.filter(b => !b.popping).sort((a, b) => b.units - a.units || b.R - a.R)[0]; if (big) startPop(big); };
+const seg = document.getElementById('seg'), desc = document.getElementById('desc');
+function setStyle(s) { style = s; [...seg.children].forEach((b, k) => b.classList.toggle('on', k === s)); desc.textContent = STYLES[s].desc; try { localStorage.setItem('wax-style', s); } catch {} }
+seg.onclick = e => { const b = e.target.closest('button'); if (b) setStyle(+b.dataset.s); };
+let saved = 0; try { saved = +(localStorage.getItem('wax-style') || 0); } catch {}
+setStyle(saved);
+window.__wax = { balls, setStyle, dropAt, startPop };
+</script>
+</body>
+</html>
